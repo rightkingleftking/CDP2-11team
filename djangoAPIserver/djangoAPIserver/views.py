@@ -1,11 +1,21 @@
-import json
-import os
-import subprocess
-import shutil
-
+#coding:utf-8
+import sys, json, subprocess, os, re, shutil
+        
 from django.shortcuts import render
 from django.http import FileResponse
 
+class Queue :
+    ll = []
+    def __init__(self) :
+        self.ll = []
+
+    def push(self, data) :
+        self.ll.append(data)
+    
+    def pop(self) :
+        returnValue = self.ll[0]
+        self.ll = self.ll[1:]
+        return returnValue
 
 CONCAT_MODE = "CONCAT"
 
@@ -19,10 +29,15 @@ def ffmpeg(commandline):
     else:
         print('Completed')
 
+def getText(headers, text, start_time=0, duration=0) :
+    inputValue = headers.pop()
 
-def getText(text, start_time=0, duration=0) :
-    if start_time or duration : return f"[0:v]drawtext=text={text}:enable='between(t,{start_time / 1000},{start_time / 1000 + duration / 1000})'"
-    else : return f"[0:v]drawtext=text={text}"
+    result = f"[{inputValue}] drawtext=text={text}"
+    if start_time or duration : 
+        result += f":enable='between(t,{start_time / 1000},{start_time / 1000 + duration / 1000})'"
+
+    return result
+
 
 def getAlign(Value) :
     if Value == "center":
@@ -38,103 +53,117 @@ def getFontColor(Value) :
 def getFontFamily(Value) :
     FONTLIST = {
         "야놀자 야체 Bold.ttf" : "font/yanolzaBold.ttf",
-        "야놀자 야체 Regular.ttf" : "font/yanolzaRegular.ttf"
+        "야놀자 야체 Regular.ttf" : "font/yanolzaRegular.ttf",
+        "BASE_FONT" : "/Windows/fonts/malgun.ttf"
     }
     if Value in FONTLIST :
         return f":fontfile={FONTLIST[Value]}"
         
     else :
-        return ""
+        return f":fontfile={FONTLIST['BASE_FONT']}"
+
+
+def getCaption(headers, VIDEO_CAPTION) :
+    if "text" in VIDEO_CAPTION :
+        if "resultPlayStartPosition" in VIDEO_CAPTION and "resultPlayDuration" in VIDEO_CAPTION: option = getText(headers, VIDEO_CAPTION['text'], VIDEO_CAPTION['resultPlayStartPosition'], VIDEO_CAPTION['resultPlayDuration'])
+        else : option = getText(headers, VIDEO_CAPTION['text'])
+    
+    if "textAlign" in VIDEO_CAPTION :
+        option += getAlign(VIDEO_CAPTION['textAlign'])
+
+    if "textColor" in VIDEO_CAPTION :
+        option += getFontColor(VIDEO_CAPTION['textColor'])
+    
+    if "textFontFile" in VIDEO_CAPTION :
+        option += getFontFamily(VIDEO_CAPTION['textFontFile'])
+    
+    retVal = headers.pop()
+
+    return f"{option} [{retVal}]", retVal
+
+def save_the_file(FILE, OUTPUT_FILENAME) :
+    abspath = "".join(os.path.abspath(FILE._get_name()).split("/")[:-1])
+    abspath += OUTPUT_FILENAME
+
+    with open(abspath, 'wb') as path :
+        shutil.copyfileobj(FILE.file, path)
+
+    return abspath
+
 
 def test_view(request):
     if request.method == "GET" : return
 
     # post로 받아온 파일을 서버 디스크에 write
-    abspath = os.path.abspath(request.FILES["file"]._get_name())
-    path = open(abspath, 'wb')
-    shutil.copyfileobj(request.FILES["file"].file, path)
-    path.close()
-
-    CONCAT_FILE_NAME = "CONCAT_RESULT.mp4"
+    FILE_PATH = save_the_file(request.FILES['file'], "output0.mp4")
+    BASE_INPUT_FILE_NAME = FILE_PATH
 
     # json parsing test
     jsonData = json.load(request.FILES["jsonfile"].file)
 
     if "file2" in request.FILES and request.POST['mode'] == CONCAT_MODE :
-        temp_path = os.path.abspath(request.FILES["file2"]._get_name())
-        path = open(temp_path, 'wb')
-        shutil.copyfileobj(request.FILES["file2"].file, path)
-        path.close()
-
+        CONCAT_FILE_NAME = "CONCAT_RESULT.mp4"
+        save_the_file(request.FILES['file2'], "output1.mp4")
         concat(jsonData, CONCAT_FILE_NAME)
         BASE_INPUT_FILE_NAME = CONCAT_FILE_NAME
-    else :
-        BASE_INPUT_FILE_NAME = abspath
         
     captionList = jsonData["captionList"]
 
     CAPTION_ATTR_LIST = ["text", "textAlign", "textColor", "textFontFile", "textFrameImageFile", "resultPlayStartPosition", "resultPlayDuration"]
 
-    for index, caption in enumerate(captionList):
+    VIDEO_CAPTIONS = []
+
+    # JSON Parsing
+    for CAPTION in captionList :
         VIDEO_CAPTION = {
 
         }
-
+        
         for CAPTION_ATTR in CAPTION_ATTR_LIST : 
-            if CAPTION_ATTR in caption :
-                VIDEO_CAPTION[CAPTION_ATTR] = caption[CAPTION_ATTR]
+            if CAPTION_ATTR in CAPTION :
+                VIDEO_CAPTION[CAPTION_ATTR] = CAPTION[CAPTION_ATTR]
 
-        # PROGRESS : GENERATE OPTIONS
-        option = ""
-        if "text" in VIDEO_CAPTION :
-            if "resultPlayStartPosition" in VIDEO_CAPTION and "resultPlayDuration" in VIDEO_CAPTION: option = getText(VIDEO_CAPTION['text'], VIDEO_CAPTION['resultPlayStartPosition'], VIDEO_CAPTION['resultPlayDuration'])
-            else : option = getText(VIDEO_CAPTION['text'])
-        
-        if "textAlign" in VIDEO_CAPTION :
-            option += getAlign(VIDEO_CAPTION['textAlign'])
+        VIDEO_CAPTIONS.append(VIDEO_CAPTION)
 
-        if "textColor" in VIDEO_CAPTION :
-            option += getFontColor(VIDEO_CAPTION['textColor'])
-        
-        if "textFontFile" in VIDEO_CAPTION :
-            option += getFontFamily(VIDEO_CAPTION['textFontFile'])
-        
+    options = ""
 
-        if len(option) == 0 :
-            result_cmd = f"""ffmpeg -y -i {BASE_INPUT_FILE_NAME} """
-        else :
-            result_cmd = f"""ffmpeg -y -i {BASE_INPUT_FILE_NAME} -filter_complex "{option}" """
+    index_count = 1
+    headers = Queue()
+    # 큐에 input Video, Output Video 삽입
+    headers.push("0:v")
+    headers.push(f"v{index_count}")
 
-        if BASE_INPUT_FILE_NAME == abspath or BASE_INPUT_FILE_NAME == CONCAT_FILE_NAME :
-            BASE_INPUT_FILE_NAME = "OUTPUT_FILE.mp4"
-            result_cmd += "OUTPUT_FILE.mp4"
-        else :
-            BASE_INPUT_FILE_NAME = "_" + BASE_INPUT_FILE_NAME
-            result_cmd += BASE_INPUT_FILE_NAME
-        
-        ffmpeg(result_cmd)
-        
+    # Make values for filter_complex
+    for VIDEO_CAPTION in VIDEO_CAPTIONS :
+        option, retVal = getCaption(headers, VIDEO_CAPTION)
+        options += option + ";"
+
+        # 큐 값 조정
+        index_count += 1
+        headers.push(retVal)
+        headers.push(f"v{index_count}")
+
+    # CASE : OPTION NOT FOUND 
+    if len(options) == 0 :
+        result_cmd = f"""ffmpeg -y -i {BASE_INPUT_FILE_NAME} """
+    else :
+        # CASE : Detect OPTION
+        options = options[:-1]
+        options = f'{options[:options.rfind("[")]} [out]' # 최종적으로 [out]이라는 변수에 영상부분 저장
+        result_cmd = f"""ffmpeg -y -i {BASE_INPUT_FILE_NAME} -filter_complex "{options}" """
+
+        # SET FOOTER
+        result_cmd += ' -map "[out]" -map "0:a" ' # 영상은 [out] 속의 값으로, 소리는 0번 비디오 파일의 소리로 지정
+
+    if BASE_INPUT_FILE_NAME == FILE_PATH or BASE_INPUT_FILE_NAME == CONCAT_FILE_NAME :
+        BASE_INPUT_FILE_NAME = "OUTPUT_FILE.mp4"
     
-    # 삭제작업 
-    if os.path.exists("result.mp4") : os.remove("result.mp4")
-    os.rename(BASE_INPUT_FILE_NAME, "result.mp4")
-    os.remove("OUTPUT_FILE.mp4")
-    if os.path.exists(CONCAT_FILE_NAME) : os.remove(CONCAT_FILE_NAME)
+    result_cmd += BASE_INPUT_FILE_NAME # 출력파일 최종 지정
+    
+    # Execute
+    ffmpeg(result_cmd) 
 
-    os.remove(request.FILES["file"]._get_name())
-    if "file2" in request.FILES :
-        if os.path.exists(request.FILES["file2"]._get_name()) :
-             os.remove(request.FILES["file2"]._get_name())
-
-    for i in range(len(BASE_INPUT_FILE_NAME) - 4) :
-        if BASE_INPUT_FILE_NAME[i] != '_' : break
-        else : 
-            try : 
-                os.remove(BASE_INPUT_FILE_NAME[i])
-            except :
-                pass
-
-    output = open('result.mp4', 'rb')
+    output = open(BASE_INPUT_FILE_NAME, 'rb')
     response = FileResponse(output)
     return response
 
@@ -211,7 +240,7 @@ def concat(JSON_FILE, RESULT_FILE) :
     FOOTER = f"""-map "[out]" -map "[a]" {RESULT_FILE}"""
 
     # Command Merge
-    result_cmd = "ffmpeg "
+    result_cmd = "ffmpeg -y "
     result_cmd += HEADER  
     result_cmd += f"""-filter_complex "{option}" """
     result_cmd += FOOTER
