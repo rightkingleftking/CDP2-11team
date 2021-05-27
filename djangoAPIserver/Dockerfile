@@ -8,6 +8,7 @@ RUN         apt -y -qq update & apt -y -qq dist-upgrade && apt -y -qq autoremove
 # pip 업그레이드
 RUN         pip install --upgrade pip
 
+RUN echo 'root:0000' | chpasswd
 # /tmp 폴더에 requirements.txt 파일 복사
 COPY        ./requirements.txt /tmp
 # requirements.txt에 있는 라이브러리 설치
