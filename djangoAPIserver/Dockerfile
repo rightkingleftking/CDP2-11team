@@ -7,17 +7,21 @@ FROM        python:3-slim
 RUN         apt -y -qq update & apt -y -qq dist-upgrade && apt -y -qq autoremove
 # pip 업그레이드
 RUN         pip install --upgrade pip
-
-RUN echo 'root:0000' | chpasswd
+# ffmpeg 다운로드
+RUN apt-get update
+RUN apt-get install -y sudo
+RUN sudo apt-get install -y ffmpeg
 # /tmp 폴더에 requirements.txt 파일 복사
 COPY        ./requirements.txt /tmp
 # requirements.txt에 있는 라이브러리 설치
 RUN         pip install -r /tmp/requirements.txt
 
-# 현재 프로젝트를 /srv/aitube 폴더에 복사
-COPY        . /srv/aitube
+# 현재 프로젝트를 / 폴더에 복사
+COPY        . /src/
 # Docker 이미지 실행시 경로
-WORKDIR     /srv/aitube
+WORKDIR     /src/
 
-# Docker 컨테이너 생성시 default로 실행하는 명령어
-CMD         /bin/bash
+
+EXPOSE 80
+
+CMD ["python3", "manage.py", "runserver", "0:80"]

@@ -22,7 +22,7 @@ class Queue:
 
 # 서브프로세스 실행을 통한 ffmpeg 실행함수
 def ffmpeg(commandline):
-    result = subprocess.Popen(commandline, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    result = subprocess.Popen(commandline, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     out, err = result.communicate()
     exitcode = result.returncode
     if exitcode != 0:
@@ -89,11 +89,10 @@ def getCaption(headers, VIDEO_CAPTION):
     return f"{option} [{retVal}]", retVal
 
 
-def save_the_file(FILE, OUTPUT_FILENAME):
-    abspath = "".join(os.path.abspath(FILE._get_name()).split("/")[:-1])
-    abspath += OUTPUT_FILENAME
+def save_the_file(FILE):
+    abspath = os.path.abspath(FILE._get_name())
 
-    with open(abspath, 'wb') as path:
+    with open(FILE._get_name(), 'wb') as path:
         shutil.copyfileobj(FILE.file, path)
 
     return abspath
@@ -104,12 +103,12 @@ def test_view(request):
 
     jsonData = json.load(request.FILES["jsonfile"].file)
     # post로 받아온 파일을 서버 디스크에 write
-    FILE_PATH = save_the_file(request.FILES['file'], jsonData["clipList"][0]["videoFile"])
+    FILE_PATH = save_the_file(request.FILES['file'])
     BASE_INPUT_FILE_NAME = FILE_PATH
 
     if "file2" in request.FILES:
         CONCAT_FILE_NAME = "CONCAT_RESULT.mp4"
-        save_the_file(request.FILES['file2'], jsonData["clipList"][1]["videoFile"])
+        save_the_file(request.FILES['file2'])
         concat(jsonData, CONCAT_FILE_NAME)
         BASE_INPUT_FILE_NAME = CONCAT_FILE_NAME
 
@@ -173,15 +172,6 @@ def test_view(request):
     output = open(BASE_INPUT_FILE_NAME, 'rb')
     response = FileResponse(output)
     return response
-
-
-def upload_view(request):
-    return render(request, f'{os.getcwd()}\\djangoAPIserver\\templates\\index.html'.replace("\\", "/"))
-
-
-def concat_view(request):
-    return render(request, f'{os.getcwd()}\\djangoAPIserver\\templates\\concat_test.html'.replace("\\", "/"))
-
 
 def getClipInfo(index, start, duration, output_index):
     # trim으로 영상의 구간을 잘라서 헤더에 추가
@@ -252,6 +242,5 @@ def concat(JSON_FILE, RESULT_FILE):
     result_cmd += HEADER
     result_cmd += f"""-filter_complex "{option}" """
     result_cmd += FOOTER
-
     # Execute
     ffmpeg(result_cmd)
