@@ -9,21 +9,21 @@
 # 서버
 http://221.157.34.231:80/
 
-method = "post"
-enctype = "multipart/form-data"
+- method = "post"
+- enctype = "multipart/form-data"
 
 ### 원본 비디오 파일
-type = "file"
-name = "file"
+- type = "file"
+- name = "file"
 
 ### concat할 비디오 파일 (없으면 보내지 않음)
-type = "file"
-name = "file2"
-(3개 이상의 파일 concat은 5월30일까지 개발예정. n개 이상의 파일의 name은 file{n}으로 처리할 예정)
+- type = "file"
+- name = "file2"
+- (3개 이상의 파일 concat은 5월30일까지 개발예정. n개 이상의 파일의 name은 file{n}으로 처리할 예정)
 
 ### 편집히스토리(jsonfile)
-type = "file"
-name = "jsonfile"
+- type = "file"
+- name = "jsonfile"
 
 
 ### json 스팩에 명시된 속성값 중 무시되는 값들
