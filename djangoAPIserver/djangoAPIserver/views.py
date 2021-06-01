@@ -97,19 +97,24 @@ def save_the_file(FILE):
 
     return abspath
 
-
 def test_view(request):
     if request.method == "GET": return
-
+    if os.path.exists("OUTPUT_FILE.mp4"):
+        os.remove("OUTPUT_FILE.mp4")
     jsonData = json.load(request.FILES["jsonfile"].file)
     # post로 받아온 파일을 서버 디스크에 write
     FILE_PATH = save_the_file(request.FILES['file'])
+
+#    FILE_PATH = os.path.abspath(request.FILES['file']._get_name())
+ #   print(FILE_PATH)
     BASE_INPUT_FILE_NAME = FILE_PATH
 
     if "file2" in request.FILES:
         CONCAT_FILE_NAME = "CONCAT_RESULT.mp4"
         save_the_file(request.FILES['file2'])
         concat(jsonData, CONCAT_FILE_NAME)
+        os.remove(request.FILES['file']._get_name())
+        os.remove(request.FILES['file2']._get_name())
         BASE_INPUT_FILE_NAME = CONCAT_FILE_NAME
 
     captionList = jsonData["captionList"]
@@ -161,16 +166,17 @@ def test_view(request):
         # SET FOOTER
         result_cmd += ' -map "[out]" -map "0:a" '  # 영상은 [out] 속의 값으로, 소리는 0번 비디오 파일의 소리로 지정
 
-    if BASE_INPUT_FILE_NAME == FILE_PATH or BASE_INPUT_FILE_NAME == CONCAT_FILE_NAME:
-        BASE_INPUT_FILE_NAME = "OUTPUT_FILE.mp4"
+#    if BASE_INPUT_FILE_NAME == FILE_PATH or BASE_INPUT_FILE_NAME == CONCAT_FILE_NAME:
+#        BASE_INPUT_FILE_NAME = "OUTPUT_FILE.mp4"
 
-    result_cmd += BASE_INPUT_FILE_NAME  # 출력파일 최종 지정
+    result_cmd += "OUTPUT_FILE.mp4"  # 출력파일 최종 지정
 
-    # Execute
     ffmpeg(result_cmd)
+    os.remove(BASE_INPUT_FILE_NAME)
 
-    output = open(BASE_INPUT_FILE_NAME, 'rb')
+    output = open("OUTPUT_FILE.mp4", 'rb')
     response = FileResponse(output)
+
     return response
 
 def getClipInfo(index, start, duration, output_index):
